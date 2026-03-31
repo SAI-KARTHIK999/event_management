@@ -363,6 +363,28 @@ export const updateUserProfile = async (userID, updateData) => {
     paramCount++;
   }
 
+  if (updateData.email) {
+    const emailQuery = `SELECT "UserID" FROM "User" WHERE "Email" = $1 AND "UserID" != $2`;
+    const emailResult = await pool.query(emailQuery, [updateData.email, userID]);
+    if (emailResult.rows.length > 0) {
+      throw createConflictError(ERROR_CODES.DUPLICATE_EMAIL, 'Email already in use');
+    }
+    updates.push(`"Email" = $${paramCount}`);
+    values.push(updateData.email);
+    paramCount++;
+  }
+
+  if (updateData.username) {
+    const userQuery = `SELECT "UserID" FROM "User" WHERE "Username" = $1 AND "UserID" != $2`;
+    const userResult = await pool.query(userQuery, [updateData.username, userID]);
+    if (userResult.rows.length > 0) {
+      throw createConflictError(ERROR_CODES.DUPLICATE_USERNAME, 'Username already in use');
+    }
+    updates.push(`"Username" = $${paramCount}`);
+    values.push(updateData.username);
+    paramCount++;
+  }
+
   if (updateData.password) {
     // Fetch user's current password hash for verification
     const userQuery = 'SELECT "PasswordHash" FROM "User" WHERE "UserID" = $1';

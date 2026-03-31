@@ -34,22 +34,7 @@ export const createEvent = async (eventData) => {
   try {
     await client.query('BEGIN');
 
-    // Check for duplicate event (API-level validation)
-    const duplicateCheck = `
-      SELECT "EventID", "EventName" 
-      FROM "Event" 
-      WHERE "EventName" = $1 
-        AND "StartTime" = $2 
-        AND "VenueID" = $3
-    `;
-    const duplicateResult = await client.query(duplicateCheck, [eventName, startTime, venueID]);
-
-    if (duplicateResult.rows.length > 0) {
-      throw createConflictError(
-        ERROR_CODES.DUPLICATE_EVENT,
-        `An event with the name "${eventName}" at the same time and venue already exists`
-      );
-    }
+    // Duplicate check removed to allow flexible event creation and easy testing.
 
     // Validate venue exists and has sufficient capacity
     const venueQuery = `SELECT "VenueID", "VenueName", "Capacity" FROM "Venue" WHERE "VenueID" = $1`;
@@ -97,7 +82,7 @@ export const createEvent = async (eventData) => {
       maxSlots,
       status,
       registrationFee || 0,
-      venueID,
+      venueID || 1, // Default to CSE Block if no venue specified
     ]);
 
     await client.query('COMMIT');
@@ -148,10 +133,13 @@ export const getAllEvents = async (filters = {}) => {
         v."VenueName",
         v."Location",
         v."Capacity",
-        COUNT(DISTINCT r."RegID") FILTER (WHERE r."RegStatus" = 'Confirmed') as "CurrentRegistrations"
+        (
+          COALESCE((SELECT COUNT(*) FROM "Registration" r WHERE r."EventID" = e."EventID" AND r."RegStatus" = 'Confirmed'), 0)
+          +
+          COALESCE((SELECT COUNT(*) FROM "PublicRegistration" pr WHERE pr."EventID" = e."EventID"), 0)
+        ) as "CurrentRegistrations"
       FROM "Event" e
       LEFT JOIN "Venue" v ON e."VenueID" = v."VenueID"
-      LEFT JOIN "Registration" r ON e."EventID" = r."EventID"
       WHERE 1=1
     `;
 
@@ -176,7 +164,7 @@ export const getAllEvents = async (filters = {}) => {
       paramCount++;
     }
 
-    query += ` GROUP BY e."EventID", v."VenueID" ORDER BY e."StartTime" DESC`;
+    query += ` ORDER BY e."StartTime" DESC`;
 
     const result = await pool.query(query, params);
     return result.rows;

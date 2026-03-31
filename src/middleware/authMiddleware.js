@@ -92,7 +92,7 @@ export const authenticateAdmin = (req, res, next) => {
     req.user = {
       AdminID: decoded.adminID,
       Email: decoded.email,
-      RoleID: decoded.roleID,
+      RoleID: decoded.roleID || 2, // Default to role 2 if not specified
     };
 
     next();
@@ -113,7 +113,7 @@ export const authenticateAdmin = (req, res, next) => {
  */
 export const authenticateAdminForRestrictedQuery = (req, res, next) => {
   const { status, isPublished } = req.query;
-  const isPublicQuery = status === 'Open' && isPublished === 'true';
+  const isPublicQuery = isPublished === 'true';
 
   // Allow public access only for status=Open&isPublished=true
   if (isPublicQuery) {

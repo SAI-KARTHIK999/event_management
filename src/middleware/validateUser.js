@@ -121,12 +121,12 @@ export const validateUserLoginInput = (req, res, next) => {
  */
 export const validateUserUpdateInput = (req, res, next) => {
   try {
-    const { fullName, phone, password, oldPassword } = req.body;
+    const { fullName, phone, password, oldPassword, email, username } = req.body;
 
-    if (!fullName && !phone && !password) {
+    if (!fullName && !phone && !password && !email && !username) {
       throw createValidationError(
         ERROR_CODES.INVALID_INPUT,
-        'At least one field (fullName, phone, or password) must be provided'
+        'At least one field (fullName, phone, password, email, or username) must be provided'
       );
     }
 
@@ -140,6 +140,16 @@ export const validateUserUpdateInput = (req, res, next) => {
     // Validate Phone (optional)
     if (phone !== undefined && phone !== null) {
       validated.phone = validatePhone(phone);
+    }
+    
+    // Validate Email (optional)
+    if (email !== undefined && email !== null) {
+      validated.email = validateEmail(email);
+    }
+    
+    // Validate Username (optional)
+    if (username !== undefined && username !== null) {
+      validated.username = validateUsername(username);
     }
 
     // Validate Password (optional but requires oldPassword)

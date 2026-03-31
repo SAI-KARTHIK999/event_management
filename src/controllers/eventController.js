@@ -14,6 +14,7 @@ import {
   getVenueById,
   uploadEventQRCode,
 } from '../services/eventService.js';
+import pool from '../db.js';
 
 /**
  * POST /events
@@ -218,6 +219,39 @@ export const getVenueByIdHandler = async (req, res, next) => {
 };
 
 /**
+ * POST /venues
+ * Create a new venue
+ */
+export const createVenueHandler = async (req, res, next) => {
+  try {
+    const { VenueName, Location, Capacity } = req.body;
+    
+    if (!VenueName || !Location || !Capacity) {
+      return res.status(400).json({
+        success: false,
+        message: 'VenueName, Location, and Capacity are required',
+      });
+    }
+
+    const query = `
+      INSERT INTO "Venue" ("VenueName", "Location", "Capacity")
+      VALUES ($1, $2, $3)
+      RETURNING *
+    `;
+    
+    const result = await pool.query(query, [VenueName, Location, Capacity]);
+    
+    res.status(201).json({
+      success: true,
+      message: 'Venue created successfully',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * POST /events/:id/upload-qrcode
  * Upload QR code for an event
  */
@@ -258,6 +292,55 @@ export const uploadEventQRCodeHandler = async (req, res, next) => {
       success: true,
       message: 'QR code uploaded successfully',
       data: event,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /events/public-registrations
+ * Get all public registrations (Admin only)
+ * Optional query param: eventId to filter by event
+ */
+export const getPublicRegistrationsHandler = async (req, res, next) => {
+  try {
+    const { eventId } = req.query;
+
+    // Ensure table exists
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "PublicRegistration" (
+        "PubRegID"    SERIAL PRIMARY KEY,
+        "EventID"     INTEGER NOT NULL,
+        "FullName"    VARCHAR(200) NOT NULL,
+        "USN"         VARCHAR(50) NOT NULL,
+        "Email"       VARCHAR(200) NOT NULL,
+        "Branch"      VARCHAR(100) NOT NULL,
+        "Phone"       VARCHAR(20) NOT NULL,
+        "RegisteredAt" TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    let query = `
+      SELECT pr.*, e."EventName"
+      FROM "PublicRegistration" pr
+      LEFT JOIN "Event" e ON e."EventID" = pr."EventID"
+    `;
+    const params = [];
+
+    if (eventId) {
+      query += ` WHERE pr."EventID" = $1`;
+      params.push(Number(eventId));
+    }
+
+    query += ` ORDER BY pr."RegisteredAt" DESC`;
+
+    const result = await pool.query(query, params);
+
+    res.status(200).json({
+      success: true,
+      count: result.rows.length,
+      data: result.rows,
     });
   } catch (error) {
     next(error);

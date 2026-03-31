@@ -14,10 +14,12 @@ import {
   getEventRegistrationsHandler,
   getAllVenuesHandler,
   getVenueByIdHandler,
+  createVenueHandler,
   uploadEventQRCodeHandler,
+  getPublicRegistrationsHandler,
 } from '../controllers/eventController.js';
 import { authenticateAdmin, authorizeEventManagement, authenticateAdminForRestrictedQuery } from '../middleware/authMiddleware.js';
-import { initiateRegistrationHandler } from '../controllers/registrationController.js';
+import { initiateRegistrationHandler, publicRegistrationHandler } from '../controllers/registrationController.js';
 import { authenticateUser } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -32,8 +34,11 @@ const upload = multer({
  * Protected Event Routes
  */
 
-// Get all events - Admin required (public only for status=Open&isPublished=true query)
+// Get all events - Admin required (public only for isPublished=true query)
 router.get('/', authenticateAdminForRestrictedQuery, getAllEventsHandler);
+
+// Get all public registrations (Admin only)
+router.get('/public-registrations', authenticateAdmin, getPublicRegistrationsHandler);
 
 /**
  * Protected Event Management Routes (Admin authentication required)
@@ -44,6 +49,9 @@ router.get('/venues/all', authenticateAdmin, getAllVenuesHandler);
 
 // Get venue by ID (Admin only)
 router.get('/venues/:id', authenticateAdmin, getVenueByIdHandler);
+
+// Create new venue (Admin only)
+router.post('/venues', authenticateAdmin, authorizeEventManagement, createVenueHandler);
 
 /**
  * Protected Event Management Operations (President & Vice-President only)
@@ -81,4 +89,8 @@ router.get('/:id/registrations', authenticateAdmin, getEventRegistrationsHandler
 // Register authenticated user for an event → creates Pending registration + Razorpay order
 router.post('/:id/register', authenticateUser, initiateRegistrationHandler);
 
+// Public registration for an event (no auth required — form-based)
+router.post('/:id/public-register', publicRegistrationHandler);
+
 export default router;
+

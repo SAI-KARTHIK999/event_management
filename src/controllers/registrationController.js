@@ -3,8 +3,9 @@
  * Handlers:
  *   initiateRegistrationHandler   →  POST /events/:id/register
  *   uploadScreenshotHandler       →  POST /payments/:paymentId/screenshot
+ *   publicRegistrationHandler     →  POST /events/:id/public-register
  */
-import { initiateRegistration, getEventNameByRegId } from '../services/registrationService.js';
+import { initiateRegistration, getEventNameByRegId, publicRegister } from '../services/registrationService.js';
 import { attachScreenshot } from '../services/paymentService.js';
 import { uploadScreenshot } from '../utils/supabaseClient.js';
 import { APIError } from '../utils/errors.js';
@@ -109,6 +110,35 @@ export const uploadScreenshotHandler = async (req, res, next) => {
         emailSent: emailResult.success,
         ...(emailResult.messageId && { emailMessageId: emailResult.messageId }),
       },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// POST /events/:id/public-register
+// Public registration — no auth required.
+// Accepts: { fullName, usn, email, branch, phone }
+// ---------------------------------------------------------------------------
+export const publicRegistrationHandler = async (req, res, next) => {
+  try {
+    const eventId = req.params.id;
+    const { fullName, usn, email, branch, phone } = req.body;
+
+    if (!eventId || isNaN(Number(eventId))) {
+      return res.status(400).json({ success: false, error: { message: 'Event ID must be a number' } });
+    }
+    if (!fullName || !usn || !email || !branch || !phone) {
+      return res.status(400).json({ success: false, error: { message: 'All fields are required: fullName, usn, email, branch, phone' } });
+    }
+
+    const result = await publicRegister(Number(eventId), { fullName, usn, email, branch, phone });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Registration successful!',
+      data: result,
     });
   } catch (err) {
     next(err);

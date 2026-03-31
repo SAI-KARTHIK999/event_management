@@ -62,9 +62,9 @@ export const initiateRegistration = async (userId, eventId) => {
 
   // -- Check capacity --
   const countQuery = `
-    SELECT COUNT(*) AS registered
-    FROM "Registration"
-    WHERE "EventID" = $1 AND "RegStatus" != 'Cancelled'
+    SELECT 
+      (SELECT COUNT(*) FROM "Registration" WHERE "EventID" = $1 AND "RegStatus" != 'Cancelled') +
+      (SELECT COUNT(*) FROM "PublicRegistration" WHERE "EventID" = $1) as registered
   `;
   const countResult = await pool.query(countQuery, [Number(eventId)]);
   const registered = parseInt(countResult.rows[0].registered, 10);
@@ -146,4 +146,68 @@ export const getRegistrationEmailContext = async (regId) => {
   `;
   const result = await pool.query(query, [Number(regId)]);
   return result.rows[0] ?? null;
+};
+
+// ---------------------------------------------------------------------------
+// Public Registration (no auth, form-based)
+// Stores Name, USN, Email, Branch, Phone linked to an EventID
+// ---------------------------------------------------------------------------
+export const publicRegister = async (eventId, { fullName, usn, email, branch, phone }) => {
+  // Ensure the PublicRegistration table exists
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "PublicRegistration" (
+      "PubRegID"    SERIAL PRIMARY KEY,
+      "EventID"     INTEGER NOT NULL,
+      "FullName"    VARCHAR(200) NOT NULL,
+      "USN"         VARCHAR(50) NOT NULL,
+      "Email"       VARCHAR(200) NOT NULL,
+      "Branch"      VARCHAR(100) NOT NULL,
+      "Phone"       VARCHAR(20) NOT NULL,
+      "RegisteredAt" TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
+  // Check event exists and get capacity info
+  const eventResult = await pool.query(
+    `SELECT "EventID", "EventName", "MaxSlots" FROM "Event" WHERE "EventID" = $1 LIMIT 1`,
+    [eventId]
+  );
+  if (eventResult.rowCount === 0) {
+    throw createNotFoundError(ERROR_CODES.EVENT_NOT_FOUND, 'Event not found');
+  }
+
+  const event = eventResult.rows[0];
+
+  // Check capacity from both registration tables
+  const countResult = await pool.query(
+    `SELECT 
+       COALESCE((SELECT COUNT(*) FROM "Registration" WHERE "EventID" = $1 AND "RegStatus" != 'Cancelled'), 0)
+       +
+       COALESCE((SELECT COUNT(*) FROM "PublicRegistration" WHERE "EventID" = $1), 0)
+       AS total`,
+    [eventId]
+  );
+  const currentCount = parseInt(countResult.rows[0].total, 10);
+  if (event.MaxSlots !== null && currentCount >= event.MaxSlots) {
+    throw createConflictError(ERROR_CODES.EVENT_FULL || 'EVENT_FULL', 'Event has reached maximum capacity');
+  }
+
+  // Check duplicate by email + event
+  const dupResult = await pool.query(
+    `SELECT 1 FROM "PublicRegistration" WHERE "EventID" = $1 AND "Email" = $2 LIMIT 1`,
+    [eventId, email]
+  );
+  if (dupResult.rowCount > 0) {
+    throw createConflictError(ERROR_CODES.ALREADY_REGISTERED || 'ALREADY_REGISTERED', 'You are already registered for this event');
+  }
+
+  // Insert registration
+  const insertResult = await pool.query(
+    `INSERT INTO "PublicRegistration" ("EventID", "FullName", "USN", "Email", "Branch", "Phone")
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`,
+    [eventId, fullName, usn, email, branch, phone]
+  );
+
+  return insertResult.rows[0];
 };
